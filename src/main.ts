@@ -3,7 +3,8 @@ import sqlite3 from "sqlite3";
 import 'dotenv/config';
 
 type Record = { id: number, time: number, temperature: number, humidity: number };
-type FormattedRecord = { id: number, id_formatted: string, time: Date, temperature: number, humidity: number };
+type RecordFormatted = { id: number, id_formatted: string, time: number, time_formatted: Date, temperature: number, humidity: number };
+type RecordSimplified = { time: number, temperature: number, humidity: number };
 type Device = { id: number, description: string };
 
 const fastify = Fastify({logger: true});
@@ -37,6 +38,22 @@ fastify.get('/current/:id', (request, reply) => {
             reply.code(500).send(err);
         } else {
             reply.send(transformRow(row));
+        }
+    });
+});
+
+fastify.get('/current/:id/:rangeStart-:rangeEnd', (request, reply) => {
+    const { id, rangeStart, rangeEnd} = objStrNum(request.params as object) as {id: number, rangeStart: number, rangeEnd: number};
+    db.all('SELECT time, temperature, humidity FROM temperature WHERE id = $id AND time BETWEEN $rangeStart AND $rangeEnd', {
+        $id: id,
+        $rangeStart: rangeStart,
+        $rangeEnd: rangeEnd
+    }, (err, rows: RecordSimplified) => {
+        if (err || !rows) {
+            fastify.log.error(err);
+            reply.code(500).send(err);
+        } else {
+            reply.send(rows);
         }
     });
 });
@@ -120,12 +137,17 @@ fastify.listen({port: 9001, host: '::'}, (err) => {
     }
 });
 
-function transformRow(row: Record): FormattedRecord {
+function transformRow(row: Record): RecordFormatted {
     return {
         id: row.id,
         id_formatted: row.id.toString(16).toUpperCase().padStart(12, '0').match(/.{1,2}/g).join(':'),
-        time: new Date(row.time),
+        time: row.time,
+        time_formatted: new Date(row.time),
         temperature: row.temperature,
         humidity: row.humidity
     }
+}
+
+function objStrNum(object: object): object {
+    return Object.keys(object).reduce((a, key) => ({ ...a, [key]: Number(object[key])}), {});
 }
