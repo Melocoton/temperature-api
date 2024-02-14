@@ -31,7 +31,7 @@ fastify.get('/current', (request, reply) => {
 
 fastify.get('/current/:id', (request, reply) => {
     const id = Number((request.params as { id: string }).id);
-    db.get('SELECT id, max(time) AS time, temperature, humidity FROM temperature GROUP BY id WHERE id = $id', { $id: id }, (err, row: Record) => {
+    db.get('SELECT id, max(time) AS time, temperature, humidity FROM temperature WHERE id = $id GROUP BY id', { $id: id }, (err, row: Record) => {
         if (err || !row) {
             fastify.log.error(err);
             reply.code(500).send(err);
