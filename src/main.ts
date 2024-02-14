@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import sqlite3 from "sqlite3";
-import 'dotenv/config'
+import 'dotenv/config';
 
 type Record = { id: number, time: number, temperature: number, humidity: number };
 type FormattedRecord = { id: number, id_formatted: string, time: Date, temperature: number, humidity: number };
@@ -24,8 +24,19 @@ fastify.get('/current', (request, reply) => {
             fastify.log.error(err);
             reply.code(500).send(err);
         } else {
-            const transformed = rows.map(transformRow);
-            reply.send(transformed);
+            reply.send(rows.map(transformRow));
+        }
+    });
+});
+
+fastify.get('/current/:id', (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    db.get('SELECT id, max(time) AS time, temperature, humidity FROM temperature GROUP BY id WHERE id = $id', { $id: id }, (err, row: Record) => {
+        if (err || !row) {
+            fastify.log.error(err);
+            reply.code(500).send(err);
+        } else {
+            reply.send(transformRow(row));
         }
     });
 });
