@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import sqlite3 from "sqlite3";
 import 'dotenv/config';
 
@@ -8,6 +9,10 @@ type RecordSimplified = { time: number, temperature: number, humidity: number };
 type Device = { id: number, description: string };
 
 const fastify = Fastify({logger: true});
+fastify.register(cors, {
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+});
 const db = new sqlite3.Database(process.env.DB_LOCATION,sqlite3.OPEN_READWRITE, err => {
     if (err) {
         console.error(err);
