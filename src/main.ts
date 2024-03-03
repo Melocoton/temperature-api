@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import sqlite3 from "sqlite3";
 import 'dotenv/config';
+import savitzkyGolay, {Options} from "ml-savitzky-golay";
 
 type Record = { id: number, time: number, temperature: number, humidity: number };
 type RecordFormatted = { id: number, id_formatted: string, time: number, time_formatted: Date, temperature: number, humidity: number };
@@ -47,13 +48,46 @@ fastify.get('/current/:id', (request, reply) => {
     });
 });
 
+fastify.get('/history/:id', (request, reply) => {
+    type Body = {rangeStart: number, rangeEnd: number, smooth: boolean};
+    const params = request.query as {rangeStart: string, rangeEnd: string, smooth: string};
+    const body: Body = {
+        rangeStart: Number(params.rangeStart),
+        rangeEnd: Number(params.rangeEnd),
+        smooth: params.smooth === 'true'
+    };
+    const id = Number((request.params as { id: string }).id);
+
+    db.all('SELECT time, temperature, humidity FROM temperature WHERE id = $id AND time BETWEEN $rangeStart AND $rangeEnd', {
+        $id: id,
+        $rangeStart: body.rangeStart,
+        $rangeEnd: body.rangeEnd
+    }, (err, rows: RecordSimplified[]) => {
+        if (err || !rows) {
+            fastify.log.error(err);
+            reply.code(500).send(err);
+        } else {
+            if (body.smooth) {
+                const options: Partial<Options> = {derivative: 0, windowSize: 29, pad: 'post', padValue: "replicate"};
+                const ansT = savitzkyGolay(rows.map(r => r.temperature), 1, options);
+                const ansH = savitzkyGolay(rows.map(r => r.humidity), 1, options);
+                rows.forEach((row, index) => {
+                    row.temperature = Number(ansT[index].toPrecision(4));
+                    row.humidity = Number(ansH[index].toPrecision(4));
+                });
+            }
+            reply.send(rows);
+        }
+    });
+});
+
 fastify.get('/current/:id/:rangeStart-:rangeEnd', (request, reply) => {
     const { id, rangeStart, rangeEnd} = objStrNum(request.params as object) as {id: number, rangeStart: number, rangeEnd: number};
     db.all('SELECT time, temperature, humidity FROM temperature WHERE id = $id AND time BETWEEN $rangeStart AND $rangeEnd', {
         $id: id,
         $rangeStart: rangeStart,
         $rangeEnd: rangeEnd
-    }, (err, rows: RecordSimplified) => {
+    }, (err, rows: RecordSimplified[]) => {
         if (err || !rows) {
             fastify.log.error(err);
             reply.code(500).send(err);
