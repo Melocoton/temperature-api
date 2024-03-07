@@ -58,6 +58,10 @@ fastify.get('/history/:id', (request, reply) => {
     };
     const id = Number((request.params as { id: string }).id);
 
+    if (body.rangeStart === body.rangeEnd) {
+        reply.code(500).send('La fecha inicial no puede ser igual a la fecha final');
+        return;
+    }
     db.all('SELECT time, temperature, humidity FROM temperature WHERE id = $id AND time BETWEEN $rangeStart AND $rangeEnd', {
         $id: id,
         $rangeStart: body.rangeStart,
