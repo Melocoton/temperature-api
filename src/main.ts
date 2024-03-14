@@ -72,13 +72,22 @@ fastify.get('/history/:id', (request, reply) => {
             reply.code(500).send(err);
         } else {
             if (body.smooth) {
-                const options: Partial<Options> = {derivative: 0, windowSize: 29, pad: 'post', padValue: "replicate"};
-                const ansT = savitzkyGolay(rows.map(r => r.temperature), 1, options);
-                const ansH = savitzkyGolay(rows.map(r => r.humidity), 1, options);
-                rows.forEach((row, index) => {
-                    row.temperature = Number(ansT[index].toPrecision(4));
-                    row.humidity = Number(ansH[index].toPrecision(4));
-                });
+                try {
+                    const options: Partial<Options> = {
+                        derivative: 0,
+                        windowSize: 29,
+                        pad: 'post',
+                        padValue: "replicate"
+                    };
+                    const ansT = savitzkyGolay(rows.map(r => r.temperature), 1, options);
+                    const ansH = savitzkyGolay(rows.map(r => r.humidity), 1, options);
+                    rows.forEach((row, index) => {
+                        row.temperature = Number(ansT[index].toPrecision(4));
+                        row.humidity = Number(ansH[index].toPrecision(4));
+                    });
+                } catch (e) {
+                    reply.send(rows);
+                }
             }
             reply.send(rows);
         }
