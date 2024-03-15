@@ -26,7 +26,9 @@ fastify.get('/', (request, reply) => {
 });
 
 fastify.get('/current', (request, reply) => {
-    db.all('SELECT DISTINCT(id), max(time) AS time, temperature, humidity FROM temperature GROUP BY id', (err, rows: Record[]) => {
+    // Query alternativa, mucho mas rapida pero no mostrara un dispositivo si este se ha desconectado
+    // select * from temperature where time = (select max(time) from temperature)
+    db.all('SELECT id, max(time) AS time, temperature, humidity FROM temperature GROUP BY id', (err, rows: Record[]) => {
         if (err || !rows) {
             fastify.log.error(err);
             reply.code(500).send(err);
