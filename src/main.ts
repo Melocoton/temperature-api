@@ -26,7 +26,7 @@ fastify.get('/', (request, reply) => {
 });
 
 fastify.get('/current', (request, reply) => {
-    db.all('SELECT id, max(time) AS time, temperature, humidity FROM (SELECT * FROM temperature ORDER BY time DESC LIMIT 50000) GROUP BY id', (err, rows: Record[]) => {
+    db.all('SELECT id, max(time) AS time, temperature, humidity FROM (SELECT * FROM temperature ORDER BY time DESC LIMIT 20000) GROUP BY id', (err, rows: Record[]) => {
         if (err || !rows) {
             fastify.log.error(err);
             reply.code(500).send(err);
