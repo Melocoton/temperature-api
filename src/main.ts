@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import jwt from '@fastify/jwt'
 import sqlite3 from "sqlite3";
 import 'dotenv/config';
 import savitzkyGolay, {Options} from "ml-savitzky-golay";
@@ -8,11 +9,35 @@ type Record = { id: number, time: number, temperature: number, humidity: number 
 type RecordFormatted = { id: number, id_formatted: string, time: number, time_formatted: Date, temperature: number, humidity: number };
 type RecordSimplified = { time: number, temperature: number, humidity: number };
 type Device = { id: number, description: string };
+type AuthKey = { key: string };
+type TokenClaims = { isAdmin: boolean, iat: number, exp: number };
 
 const fastify = Fastify({logger: true});
 fastify.register(cors, {
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+});
+fastify.register(jwt, {
+    secret: process.env.JWT_KEY
+});
+fastify.decorate("auth", async (request, reply) => {
+    try {
+        return await request.jwtVerify();
+    } catch (e) {
+        reply.code(401).send("Unable to get current user verification");
+    }
+});
+fastify.decorate("authAdmin", async (request, reply) => {
+    try {
+        const decodedToken: TokenClaims = await request.jwtVerify();
+        if (decodedToken.isAdmin) {
+            return decodedToken;
+        } else {
+            reply.code(401).send("Admin required");
+        }
+    } catch (e) {
+        reply.code(401).send("Unable to get current user verification");
+    }
 });
 const db = new sqlite3.Database(process.env.DB_LOCATION,sqlite3.OPEN_READWRITE, err => {
     if (err) {
@@ -21,12 +46,26 @@ const db = new sqlite3.Database(process.env.DB_LOCATION,sqlite3.OPEN_READWRITE, 
     }
 });
 
+fastify.post('/auth', (request, reply) => {
+    const body = request.body as AuthKey;
+    if (body.key === process.env.AUTH_KEY) {
+        const token = fastify.jwt.sign({isAdmin: false}, {expiresIn: "24h"});
+        reply.send({token});
+    } else if (body.key === process.env.ADMIN_KEY) {
+        const token = fastify.jwt.sign({isAdmin: true}, {expiresIn: "24h"});
+        reply.send({token});
+    } else {
+        reply.code(401).send("Unauthorized");
+    }
+
+});
+
 fastify.get('/', (request, reply) => {
     reply.send('Hello World');
 });
 
-fastify.get('/current', (request, reply) => {
-    db.all('SELECT id, max(time) AS time, temperature, humidity FROM (SELECT * FROM temperature ORDER BY time DESC LIMIT 20000) GROUP BY id', (err, rows: Record[]) => {
+fastify.get('/current', {onRequest: [fastify["auth"]]}, (request, reply) => {
+    db.all('SELECT id, max(time) AS time, temperature, humidity FROM (SELECT * FROM temperature ORDER BY time DESC LIMIT 20000) WHERE id IN (SELECT id FROM device) GROUP BY id', (err, rows: Record[]) => {
         if (err || !rows) {
             fastify.log.error(err);
             reply.code(500).send(err);
@@ -36,7 +75,7 @@ fastify.get('/current', (request, reply) => {
     });
 });
 
-fastify.get('/current/:id', (request, reply) => {
+fastify.get('/current/:id', {onRequest: [fastify["auth"]]}, (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     db.get('SELECT id, max(time) AS time, temperature, humidity FROM temperature WHERE id = $id GROUP BY id', { $id: id }, (err, row: Record) => {
         if (err || !row) {
@@ -48,7 +87,7 @@ fastify.get('/current/:id', (request, reply) => {
     });
 });
 
-fastify.get('/history/:id', (request, reply) => {
+fastify.get('/history/:id', {onRequest: [fastify["auth"]]}, (request, reply) => {
     type Body = {rangeStart: number, rangeEnd: number, smooth: boolean};
     const params = request.query as {rangeStart: string, rangeEnd: string, smooth: string};
     const body: Body = {
@@ -94,7 +133,7 @@ fastify.get('/history/:id', (request, reply) => {
     });
 });
 
-fastify.get('/current/:id/:rangeStart-:rangeEnd', (request, reply) => {
+fastify.get('/current/:id/:rangeStart-:rangeEnd', {onRequest: [fastify["auth"]]}, (request, reply) => {
     const { id, rangeStart, rangeEnd} = objStrNum(request.params as object) as {id: number, rangeStart: number, rangeEnd: number};
     db.all('SELECT time, temperature, humidity FROM temperature WHERE id = $id AND time BETWEEN $rangeStart AND $rangeEnd', {
         $id: id,
@@ -110,7 +149,7 @@ fastify.get('/current/:id/:rangeStart-:rangeEnd', (request, reply) => {
     });
 });
 
-fastify.get('/devices', (request, reply) => {
+fastify.get('/devices', {onRequest: [fastify["auth"]]}, (request, reply) => {
     db.all('SELECT * FROM device;', (err, rows: Device[]) => {
         if (err || !rows) {
             fastify.log.error(err);
@@ -121,7 +160,7 @@ fastify.get('/devices', (request, reply) => {
     });
 });
 
-fastify.get('/device/:id', (request, reply) => {
+fastify.get('/device/:id', {onRequest: [fastify["auth"]]}, (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     db.get('SELECT * FROM device WHERE id = $id', {
         $id: id,
@@ -135,7 +174,7 @@ fastify.get('/device/:id', (request, reply) => {
     });
 });
 
-fastify.put('/device', (request, reply) => {
+fastify.put('/device', {onRequest: [fastify["authAdmin"]]}, (request, reply) => {
     const device: Device = request.body as Device;
     db.run('INSERT INTO device (id, description) values ($id, $description)', {
         $id: device.id,
@@ -151,7 +190,7 @@ fastify.put('/device', (request, reply) => {
     });
 });
 
-fastify.patch('/device', (request, reply) => {
+fastify.patch('/device', {onRequest: [fastify["authAdmin"]]}, (request, reply) => {
     const device: Device = request.body as Device;
     db.run('UPDATE device SET description = $description WHERE id = $id', {
         $id: device.id,
@@ -167,7 +206,7 @@ fastify.patch('/device', (request, reply) => {
     });
 });
 
-fastify.delete('/device/:id', (request, reply) => {
+fastify.delete('/device/:id', {onRequest: [fastify["authAdmin"]]}, (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     db.run('DELETE FROM device WHERE id = $id', {
         $id: id,
