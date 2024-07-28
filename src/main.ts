@@ -251,22 +251,20 @@ function compress(data: RecordSimplified[], size = 100): RecordSimplified[] {
         const chunk = data.slice(i, i + chunkSize);
         chunkArray.push(chunk);
     }
-    const compressedData = chunkArray.map(chunk => {
+    return chunkArray.map(chunk => {
         const avgchunk = chunk.reduce((acc, cur) => sumRecord(acc, cur));
-        const finalCalculation: RecordSimplified = {
+        return {
             humidity: avgchunk.humidity / chunk.length,
             temperature: avgchunk.temperature / chunk.length,
             time: avgchunk.time
         };
-        return finalCalculation;
     });
-    return compressedData;
 }
 
 function sumRecord(recordA: RecordSimplified, recordB: RecordSimplified): RecordSimplified {
     return {
         humidity: recordA.humidity + recordB.humidity,
         temperature: recordA.temperature + recordB.temperature,
-        time: recordA.time,
+        time: Math.round(((recordB.time - recordA.time) / 2) + recordA.time),
     }
 }
