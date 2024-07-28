@@ -8,6 +8,7 @@ import savitzkyGolay, {Options} from "ml-savitzky-golay";
 type Record = { id: number, time: number, temperature: number, humidity: number };
 type RecordFormatted = { id: number, id_formatted: string, time: number, time_formatted: Date, temperature: number, humidity: number };
 type RecordSimplified = { time: number, temperature: number, humidity: number };
+type RecordSummary = {time: string, maxTemp: number, minTemp: number, maxHum: number, minHum: number};
 type Device = { id: number, description: string };
 type AuthKey = { key: string };
 type TokenClaims = { isAdmin: boolean, iat: number, exp: number };
@@ -153,7 +154,7 @@ fastify.get('/summary/:id', {onRequest: [fastify["auth"]]}, (request, reply) => 
         $id: id,
         $rangeStart: body.rangeStart,
         $rangeEnd: body.rangeEnd
-    }, (err, rows: RecordSimplified[]) => {
+    }, (err, rows: RecordSummary[]) => {
         if (err || !rows) {
             fastify.log.error(err);
             reply.code(500).send(err);
