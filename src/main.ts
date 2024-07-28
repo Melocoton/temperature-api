@@ -110,11 +110,12 @@ fastify.get('/history/:id', {onRequest: [fastify["auth"]]}, (request, reply) => 
             fastify.log.error(err);
             reply.code(500).send(err);
         } else {
+            rows = compress(rows, Math.round(rows.length / 20));
             if (body.smooth) {
                 try {
                     const options: Partial<Options> = {
                         derivative: 0,
-                        windowSize: 29,
+                        windowSize: 5,
                         pad: 'post',
                         padValue: "replicate"
                     };
@@ -241,4 +242,31 @@ function transformRow(row: Record): RecordFormatted {
 
 function objStrNum(object: object): object {
     return Object.keys(object).reduce((a, key) => ({ ...a, [key]: Number(object[key])}), {});
+}
+
+function compress(data: RecordSimplified[], size = 100): RecordSimplified[] {
+    const chunkSize: number = data.length / size;
+    const chunkArray: RecordSimplified[][] = [];
+    for (let i = 0; i < data.length; i += chunkSize) {
+        const chunk = data.slice(i, i + chunkSize);
+        chunkArray.push(chunk);
+    }
+    const compressedData = chunkArray.map(chunk => {
+        const avgchunk = chunk.reduce((acc, cur) => sumRecord(acc, cur));
+        const finalCalculation: RecordSimplified = {
+            humidity: avgchunk.humidity / chunk.length,
+            temperature: avgchunk.temperature / chunk.length,
+            time: avgchunk.time
+        };
+        return finalCalculation;
+    });
+    return compressedData;
+}
+
+function sumRecord(recordA: RecordSimplified, recordB: RecordSimplified): RecordSimplified {
+    return {
+        humidity: recordA.humidity + recordB.humidity,
+        temperature: recordA.temperature + recordB.temperature,
+        time: recordA.time,
+    }
 }
