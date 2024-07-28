@@ -134,6 +134,35 @@ fastify.get('/history/:id', {onRequest: [fastify["auth"]]}, (request, reply) => 
     });
 });
 
+fastify.get('/summary/:id', {onRequest: [fastify["auth"]]}, (request, reply) => {
+    type Body = {rangeStart: number, rangeEnd: number, smooth: boolean};
+    const params = request.query as {rangeStart: string, rangeEnd: string, smooth: string};
+    const body: Body = {
+        rangeStart: Number(params.rangeStart),
+        rangeEnd: Number(params.rangeEnd),
+        smooth: params.smooth === 'true'
+    };
+    const id = Number((request.params as { id: string }).id);
+
+    if (body.rangeStart === body.rangeEnd) {
+        reply.code(500).send('La fecha inicial no puede ser igual a la fecha final');
+        return;
+    }
+
+    db.all(`select date(datetime(round(time/1000), 'unixepoch', 'localtime')) AS time, max(temperature) AS maxTemp, min(temperature) AS minTem, max(humidity) as maxHum, min(humidity) AS minHum from temperature where id = $id AND time BETWEEN $rangeStart AND $rangeEnd group by date(datetime(round(time/1000), 'unixepoch', 'localtime')) order by time desc limit 31`, {
+        $id: id,
+        $rangeStart: body.rangeStart,
+        $rangeEnd: body.rangeEnd
+    }, (err, rows: RecordSimplified[]) => {
+        if (err || !rows) {
+            fastify.log.error(err);
+            reply.code(500).send(err);
+        } else {
+            reply.send(rows.reverse())
+        }
+    })
+});
+
 fastify.get('/current/:id/:rangeStart-:rangeEnd', {onRequest: [fastify["auth"]]}, (request, reply) => {
     const { id, rangeStart, rangeEnd} = objStrNum(request.params as object) as {id: number, rangeStart: number, rangeEnd: number};
     db.all('SELECT time, temperature, humidity FROM temperature WHERE id = $id AND time BETWEEN $rangeStart AND $rangeEnd', {
